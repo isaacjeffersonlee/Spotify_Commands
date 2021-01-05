@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+# /home/isaac/Projects/Python/Spotify_Commands/env/bin/python
+# /usr/bin/env python
 # Imports
 import os
 import argparse
@@ -8,6 +10,7 @@ import json
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 # import spotipy.util as util
+
 
 ### TODO ###
 # 
@@ -20,9 +23,9 @@ from spotipy.oauth2 import SpotifyOAuth
 
 
 # Setting Environment Variables, could make this as command line inputs that get saved at a later date.
-os.environ['SPOTIPY_CLIENT_ID'] = 'abb90ec72eab412c97d01276fc4ff11f'
-os.environ['SPOTIPY_CLIENT_SECRET'] = 'dcd2dcd92b864340952306e0f674dda8'
-os.environ['SPOTIPY_REDIRECT_URI'] = 'https://www.google.com/'
+# os.environ['SPOTIPY_CLIENT_ID'] = 'abb90ec72eab412c97d01276fc4ff11f'
+# os.environ['SPOTIPY_CLIENT_SECRET'] = 'dcd2dcd92b864340952306e0f674dda8'
+# os.environ['SPOTIPY_REDIRECT_URI'] = 'https://www.google.com/'
 
 # Client Credentials
 username = 'isaacjeffersonlee?si=IDXT-pNdRqaqGCdB4oOOHA'
@@ -31,18 +34,19 @@ user-library-modify user-follow-modify playlist-read-private
 playlist-modify-public playlist-modify-private user-read-playback-state
 user-read-currently-playing user-read-private user-follow-read
 playlist-read-collaborative user-library-read'''
+redirect_uri = 'https://www.google.com/'
+client_secret = 'dcd2dcd92b864340952306e0f674dda8'
+client_id = 'abb90ec72eab412c97d01276fc4ff11f'
 
-# token = util.prompt_for_user_token(username,
-#                                    scope,
-#                                    client_id='abb90ec72eab412c97d01276fc4ff11f',
-#                                    client_secret='dcd2dcd92b864340952306e0f674dda8',
-#                                    redirect_uri='https://www.google.com/')
+# Where to look for .cache 
+cache_path = os.path.dirname(__file__) + '/.cache'  
 
-sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scope))
+auth_manager = spotipy.oauth2.SpotifyOAuth(client_id=client_id,
+                                           client_secret=client_secret,
+                                           redirect_uri=redirect_uri,
+                                           cache_path=cache_path)
 
-# Spotipy Object
-# sp = spotipy.Spotify(auth=token)
-
+sp = spotipy.Spotify(auth_manager=auth_manager)
 
 # My json dumps function
 def jprint(data):
