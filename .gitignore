@@ -1,2 +1,4 @@
 spcom_config.py
 env
+.*
+!.gitignore
