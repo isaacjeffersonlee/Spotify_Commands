@@ -2,6 +2,8 @@
 
 # Imports
 import spcom_config
+from notify import notification
+import dmenu
 import os
 import argparse
 from argparse import RawTextHelpFormatter
@@ -21,7 +23,7 @@ client_secret = spcom_config.client_secret
 client_id = spcom_config.client_id
 redirect_uri = spcom_config.redirect_uri
 
-# Where to look for .cache 
+# Where to look for .cache
 cache_path = os.path.dirname(__file__) + '/.cache'
 
 auth_manager = spotipy.oauth2.SpotifyOAuth(client_id=client_id,
@@ -30,6 +32,7 @@ auth_manager = spotipy.oauth2.SpotifyOAuth(client_id=client_id,
                                            cache_path=cache_path)
 
 sp = spotipy.Spotify(auth_manager=auth_manager)
+
 
 # My json dumps function
 def jprint(data):
@@ -160,6 +163,7 @@ def is_active():
     else:
         return True
 
+    
 def switch_playback():
     """Switch playback to next active device."""
     if is_active():
@@ -204,7 +208,7 @@ def get_last_tracks_uri(playlist_query, track_num):
     else:
         # playlist_tracks = sp.user_playlist_tracks(playlist_id=playlist_uri, limit=5, offset=0)
         playlist_len = sp.playlist_items(playlist_uri, fields='total', limit=1)['total']
-        offset = playlist_len - track_num
+        offset = int(playlist_len) - int(track_num)
         tracks = sp.playlist_tracks(playlist_uri, offset=offset, fields='items')['items']
         track_uris = [track['track']['uri'] for track in tracks]
         return track_uris
@@ -227,30 +231,73 @@ def queue_recommended(playlist_query, num_tracks):
             sp.add_to_queue(track_uri)
 
 
+def toggle_play_pause():
+    """Toggle play or pause."""
+    if is_active():
+        is_playing = sp.current_user_playing_track()['is_playing']
+        if is_playing:
+            sp.pause_playback()
+        else:
+            sp.start_playback()
+    else:
+        pass
+
+def queue_last_n_songs(playlist, n):
+    """Queue the last n songs from a playlist."""
+    track_uris = get_last_tracks_uri(playlist, n)
+    if not track_uris:
+        return False
+    else:
+        for uri in track_uris:
+            sp.add_to_queue(uri)
+            
+
 def main():
     parser = argparse.ArgumentParser(description='Control Spotify Playback',
                                      formatter_class=RawTextHelpFormatter)
 
     parser.add_argument('action', help='''[action] options:
+    
+    [toggle] : toggle play/pause depending on current state,
+
     [play] : resume/start current playback,
+
     [pause] : pause current playback,
+
     [next] : skip current track,
+
     [prev] : previous track,
+
     [skip] : skip the current song by -t time, in ms,
-    [search] : search and play a song, using -s flag,
-    [queue] : search and queue a song, using -s flag,
-    [recommend] : queue -n recommended songs, based on the last 5 songs from -p playlist,
-    [switch] : switch/transfer playback to next available device,
+
+    [search] : prompt for a song with dmenu and play,
+
+    [queue] : prompt for a song with dmenu and add to queue,
+
+    [recommend] : prompt for a playlist to base recommendations
+    off with dmenu, using the last 5 songs from the
+    playlist to find and queue 5 recommended songs.
+
+    [switch] : switch playback to next available device,
+
+    [transfer] : prompt for a device with dmenu and switch to it,
+
     [devices] : list currently active devices,
+
     [current] : get currently playing song,
-    [add] : add currently playing song to playlist, specified by -p playlist flag,
+
+    [add] : dmenu prompt for a playlist to add the currently playing song to, 
+
+    [last] : dmenu prompt to queue the last n songs from a playlist,
+
     [playlists] : list current users playlists.''')
 
-    parser.add_argument('-s', '--song', help='Song flag, used with search action.')
-    parser.add_argument('-p', '--playlist', help='Playlist flag, used with add action.')
     parser.add_argument('-t', '--time', help='Time flag, used with skip action.')
-    parser.add_argument('-n', '--number', help='Number of songs flag, used with queue_recommended')
+
     args = parser.parse_args()
+
+    if args.action == 'toggle':
+        toggle_play_pause()
 
     if args.action == 'play':
         if is_active():
@@ -271,64 +318,151 @@ def main():
             skip_time(args.time)
 
     elif args.action == 'search':
-        if args.song is None:
-            print("No song to search!")
-            print("Please enter a song to search with -s flag.")
+        song = dmenu.show(["<"],
+                          prompt="Song to play:",
+                          background_selected='#1DB954',
+                          foreground_selected='#000000')
+        if song is None:
+            pass
         else:
-            playback_from_search(args.song)
+            playback_from_search(song)
+            search_result = get_currently_playing()
+            song_and_artist = search_result['song'] + \
+                ' - ' + search_result['artist']
+            notification(f'Now playing {song_and_artist}.',
+                         title='Spcom')
             
     elif args.action == 'queue':
-        if args.song is None:
-            print("No song to queue!")
-            print("Please enter a song to queue with -s flag.")
+        song = dmenu.show(["<"],
+                          prompt="Song to queue:",
+                          background_selected='#1DB954',
+                          foreground_selected='#000000')
+        if song is None:
+            pass
         else:
-            queue_query(args.song)
+            try:
+                if not queue_query(song):
+                    notification(f'{song} not found!.', title='Error!')
+                else:
+                    queue_query(song)
+                    notification(f'{song} added to queue.', title='Spcom')
+
+            except spotipy.exceptions.SpotifyException:
+                notification('No active device found!', title='Error!')
 
     elif args.action == 'recommend':
-        if args.playlist is None:
-            print("No playlist specified!")
-            print("Please enter a playlist to base recommendations off with -p flag.")
-        elif args.number is None:
-            print("No number specified!")
-            print("Please specify the number of recommended songs to add to queue with -n flag.")
+        playlists = get_user_playlists()
+        playlist_names = [playlist['name'] for playlist in playlists]
+        playlist = dmenu.show(playlist_names, lines=len(playlist_names),
+                              prompt="Playlists:",
+                              background_selected='#1DB954',
+                              foreground_selected='#000000')
+        if playlist is None:
+            notification("No playlist given!", title='Error!')
         else:
-            queue_recommended(args.playlist, args.number)
+            queue_recommended(playlist, 5)
+            notification(f"Added 5 recommended songs based on {playlist}",
+                         title="Spcom")
 
     elif args.action == 'current':
         current = get_currently_playing()
         print(current['song'] + ' - ' + current['artist'])
 
     elif args.action == 'add':
-        if args.playlist is None:
-            print("No playlist given!")
-            print("Please enter a playlist to search with -s flag.")
+        if not is_active():
+            notification('No song currently playing!', title='Error!')
         else:
-            song = get_currently_playing()['song']
-            track_uri = get_track_uri(song)
-            add_track_to_playlist(args.playlist, track_uri)
+            playlists = get_user_playlists()
+            playlist_names = [playlist['name'] for playlist in playlists]
+            playlist = dmenu.show(playlist_names,
+                                  lines=len(playlist_names),
+                                  prompt="Playlists:",
+                                  background_selected='#1DB954',
+                                  foreground_selected='#000000')
+
+            if playlist is None:
+                pass
+            else:
+                song = get_currently_playing()['song']
+                track_uri = get_track_uri(song)
+                add_track_to_playlist(playlist, track_uri)
+                notification(f'Added {song} to {playlist}')
 
     elif args.action == 'playlists':
         playlists = get_user_playlists()
-        print("User playlists: ")
-        for playlist in playlists:
-            print(playlist['name'] + ' - ' + playlist['uri'])
+        playlist_names = [playlist['name'] for playlist in playlists]
+        dmenu.show(playlist_names, lines=len(playlist_names),
+                   prompt="Playlists:",
+                   background_selected='#1DB954',
+                   foreground_selected='#000000')
 
     elif args.action == 'devices':
         devices = get_devices()
-        for device in devices:
-            print('Device name: {}, id: {}'.format(device['name'], device['id']))
+        # for device in devices:
+            # print('Device name: {}, id: {}'.format(device['name'], device['id']))
+        device_list = [device['name'] for device in devices]
+        dmenu.show(device_list, prompt="Active Devices: ",
+                   lines=len(device_list),
+                   background_selected='#1DB954',
+                   foreground_selected='#000000')
+
+    elif args.action == 'transfer':
+        if not is_active():
+            notification('No active devices!', title='Error!')
+        else:
+            all_devices = get_devices()
+            devices = [device['name'] for device in all_devices]
+            device_name = dmenu.show(devices, lines=len(devices),
+                                     prompt="Switch device to:",
+                                     background_selected='#1DB954',
+                                     foreground_selected='#000000')
+            for device in all_devices:
+                if device_name == device['name']:
+                    chosen_device_id = device['id']
+
+            sp.transfer_playback(device_id=chosen_device_id,
+                                 force_play=True)
+            notification('Now playing from {}'.format(device_name))
 
     elif args.action == 'switch':
         switch_playback()
 
     elif args.action == 'next':
         sp.next_track()
+        current = get_currently_playing()
+        song_and_artist = current['song'] + ' - ' + current['artist']
+        notification(f"Now playing {song_and_artist}", title="Spcom")
 
     elif args.action == 'prev':
         sp.previous_track()
+        current = get_currently_playing()
+        song_and_artist = current['song'] + ' - ' + current['artist']
+        notification(f"Now playing {song_and_artist}", title="Spcom")
 
+    elif args.action == 'last':
+        if not is_active():
+            notification('No active devices!', title='Error!')
+        else:
+            playlists = get_user_playlists()
+            playlist_names = [playlist['name'] for playlist in playlists]
+            playlist = dmenu.show(playlist_names, lines=len(playlist_names),
+                                  prompt="Playlists:",
+                                  background_selected='#1DB954',
+                                  foreground_selected='#000000')
+            num_songs = dmenu.show(["<"], prompt="Num. songs to queue:",
+                                   background_selected='#1DB954',
+                                   foreground_selected='#000000')
+            queue_last_n_songs(playlist, num_songs)
+            notification(f"Queued last {num_songs} from {playlist}")
+            
     elif args.action == 'shuffle':
-        toggle_shuffle()
+        if not is_active():
+            notification('No active devices!', title='Error!')
+        else:
+            toggle_shuffle()
+            current_playback_info = sp.current_playback()
+            shuffle_state = current_playback_info['shuffle_state'] 
+            notification(f'Shuffle mode {shuffle_state}', title='Spcom')
 
     else:
         print(f'{args.action} is not a valid argument! See -h for available actions.')
