@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 
-# Imports
 import spcom_config
-from notify import notification
+from pynotifier import Notification
 import dmenu
 import os
 import argparse
@@ -25,6 +24,9 @@ redirect_uri = spcom_config.redirect_uri
 
 # Where to look for .cache
 cache_path = os.path.dirname(__file__) + '/.cache'
+
+# Where to look for spotify icon for notifications
+images_path = os.path.dirname(__file__) + '/Images/'
 
 auth_manager = spotipy.oauth2.SpotifyOAuth(client_id=client_id,
                                            client_secret=client_secret,
@@ -143,6 +145,7 @@ def queue_query(search_query):
     track_uri = get_track_uri(search_query)
     if track_uri:
         sp.add_to_queue(track_uri)
+        return True
     else:
         return False
 
@@ -206,7 +209,6 @@ def get_last_tracks_uri(playlist_query, track_num):
     if not playlist_uri:
         return False
     else:
-        # playlist_tracks = sp.user_playlist_tracks(playlist_id=playlist_uri, limit=5, offset=0)
         playlist_len = sp.playlist_items(playlist_uri, fields='total', limit=1)['total']
         offset = int(playlist_len) - int(track_num)
         tracks = sp.playlist_tracks(playlist_uri, offset=offset, fields='items')['items']
@@ -250,7 +252,28 @@ def queue_last_n_songs(playlist, n):
     else:
         for uri in track_uris:
             sp.add_to_queue(uri)
-            
+
+def sp_notify(title, description, duration):
+    """Send notifcations with the spotify-icon."""
+    Notification(
+            title=title,
+            description=description,
+            icon_path=images_path + 'spotify_logo.png',
+            duration=duration,      # Duration in seconds
+            urgency=Notification.URGENCY_NORMAL
+    ).send()
+
+
+def sp_error(description):
+    """Error notification."""
+    Notification(
+            title="Spcom Error!",
+            description=description,
+            icon_path=images_path + 'error.png',
+            duration=3,      # Duration in seconds
+            urgency=Notification.URGENCY_NORMAL
+    ).send()
+    
 
 def main():
     parser = argparse.ArgumentParser(description='Control Spotify Playback',
@@ -329,8 +352,9 @@ def main():
             search_result = get_currently_playing()
             song_and_artist = search_result['song'] + \
                 ' - ' + search_result['artist']
-            notification(f'Now playing {song_and_artist}.',
-                         title='Spcom')
+            sp_notify(title='Search and Play',
+                      description=f'Now playing {song_and_artist}.',
+                      duration=3)
             
     elif args.action == 'queue':
         song = dmenu.show(["<"],
@@ -338,17 +362,19 @@ def main():
                           background_selected='#1DB954',
                           foreground_selected='#000000')
         if song is None:
-            pass
+            sp_error('No song given!')
         else:
             try:
                 if not queue_query(song):
-                    notification(f'{song} not found!.', title='Error!')
+                    sp_error(f'{song} not found!')
                 else:
                     queue_query(song)
-                    notification(f'{song} added to queue.', title='Spcom')
+                    sp_notify(title='Queue',
+                              description=f'{song} added to queue.',
+                              duration=3)
 
             except spotipy.exceptions.SpotifyException:
-                notification('No active device found!', title='Error!')
+                sp_error('No active device found!')
 
     elif args.action == 'recommend':
         playlists = get_user_playlists()
@@ -358,11 +384,12 @@ def main():
                               background_selected='#1DB954',
                               foreground_selected='#000000')
         if playlist is None:
-            notification("No playlist given!", title='Error!')
+            sp_error("No playlist given!")
         else:
             queue_recommended(playlist, 5)
-            notification(f"Added 5 recommended songs based on {playlist}",
-                         title="Spcom")
+            sp_notify(title='Recommendations',
+                      description=f'Added 5 recommended songs based on {playlist}',
+                      duration=3)
 
     elif args.action == 'current':
         current = get_currently_playing()
@@ -370,7 +397,7 @@ def main():
 
     elif args.action == 'add':
         if not is_active():
-            notification('No song currently playing!', title='Error!')
+            sp_error('No song currently playing!')
         else:
             playlists = get_user_playlists()
             playlist_names = [playlist['name'] for playlist in playlists]
@@ -386,7 +413,9 @@ def main():
                 song = get_currently_playing()['song']
                 track_uri = get_track_uri(song)
                 add_track_to_playlist(playlist, track_uri)
-                notification(f'Added {song} to {playlist}')
+                sp_notify(title='Added Song',
+                          description=f'Added {song} to {playlist}',
+                          duration=3)
 
     elif args.action == 'playlists':
         playlists = get_user_playlists()
@@ -408,7 +437,7 @@ def main():
 
     elif args.action == 'transfer':
         if not is_active():
-            notification('No active devices!', title='Error!')
+            sp_error('No active devices!')
         else:
             all_devices = get_devices()
             devices = [device['name'] for device in all_devices]
@@ -422,7 +451,7 @@ def main():
 
             sp.transfer_playback(device_id=chosen_device_id,
                                  force_play=True)
-            notification('Now playing from {}'.format(device_name))
+            sp_notify('Device Transfer', f'Now playing from {device_name}', 3)
 
     elif args.action == 'switch':
         switch_playback()
@@ -431,17 +460,17 @@ def main():
         sp.next_track()
         current = get_currently_playing()
         song_and_artist = current['song'] + ' - ' + current['artist']
-        notification(f"Now playing {song_and_artist}", title="Spcom")
+        sp_notify('Next', f"Now playing {song_and_artist}", 2)
 
     elif args.action == 'prev':
         sp.previous_track()
         current = get_currently_playing()
         song_and_artist = current['song'] + ' - ' + current['artist']
-        notification(f"Now playing {song_and_artist}", title="Spcom")
+        sp_notify('Previous', f"Now playing {song_and_artist}", 2)
 
     elif args.action == 'last':
         if not is_active():
-            notification('No active devices!', title='Error!')
+            sp_error('No active devices!')
         else:
             playlists = get_user_playlists()
             playlist_names = [playlist['name'] for playlist in playlists]
@@ -453,16 +482,16 @@ def main():
                                    background_selected='#1DB954',
                                    foreground_selected='#000000')
             queue_last_n_songs(playlist, num_songs)
-            notification(f"Queued last {num_songs} from {playlist}")
+            sp_notify("Queue", f"Queued last {num_songs} songs from {playlist}", 3)
             
     elif args.action == 'shuffle':
         if not is_active():
-            notification('No active devices!', title='Error!')
+            sp_error('No active devices!')
         else:
             toggle_shuffle()
             current_playback_info = sp.current_playback()
             shuffle_state = current_playback_info['shuffle_state'] 
-            notification(f'Shuffle mode {shuffle_state}', title='Spcom')
+            sp_notify('Shuffle', f'Shuffle mode {shuffle_state}', 3)
 
     else:
         print(f'{args.action} is not a valid argument! See -h for available actions.')
@@ -470,5 +499,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-    
