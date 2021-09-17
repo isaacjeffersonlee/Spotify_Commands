@@ -1,6 +1,10 @@
 # Spotify_Commands
-Control Spotify playback from command line.
 
+## Summary
+Python command line tool to control Spotify playback from command line.
+Uses the Spotipy python Spotify API
+
+## Options
  Option  | Info
  --------|-----------------------------------
  [toggle] | toggle play/pause depending on current state,
@@ -19,3 +23,10 @@ Control Spotify playback from command line.
  [add] | dmenu prompt for a playlist to add the currently playing song to, 
  [last] | dmenu prompt to queue the last n songs from a playlist,
  [playlists] | list current users playlists.
+
+## Dependencies
+```
+pip install spotipy
+pip install dmenu
+pip install py-notifier
+```
