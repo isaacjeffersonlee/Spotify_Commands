@@ -11,7 +11,7 @@ Control Spotify playback from command line.
  [skip] | skip the current song by -t time, in ms,
  [search] | prompt for a song with dmenu and play,
  [queue] | prompt for a song with dmenu and add to queue,
- [recommend] | prompt for a playlist to base recommendations off with dmenu, using the last 5 songs from the playlist to find and queue 5 recommended songs.
+ [recommend] | prompt for a playlist to recommend from, uses the last 5 songs from the playlist to find and queue 5 recommended songs.
  [switch] | switch playback to next available device,
  [transfer] | prompt for a device with dmenu and switch to it,
  [devices] | list currently active devices,
